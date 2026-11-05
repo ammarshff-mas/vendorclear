@@ -154,6 +154,8 @@ const TOOLS = [
 
 // ─── Tool Handlers ──────────────────────────────────────────────────
 
+let BASE_URL = process.env.PUBLIC_URL || '';
+
 function handleTool(name, args) {
   switch (name) {
     case 'create_supplier': return createSupplier(args);
@@ -378,7 +380,7 @@ function createFixRequest(args) {
     invoiceNumber: invoice.invoiceNumber,
     supplierName: supplier ? supplier.name : 'Unknown',
     message: args.message,
-    publicUrl: `/#/fix/${token}`,
+    publicUrl: `${BASE_URL}/#/fix/${token}`,
     status: 'open'
   };
 }
@@ -441,7 +443,8 @@ function logActivity(invoiceId, supplierId, actor, action, detail) {
 
 // ─── MCP Protocol Handler ───────────────────────────────────────────
 
-function handleMcpRequest(body) {
+function handleMcpRequest(body, baseUrl) {
+  if (baseUrl) BASE_URL = baseUrl;
   // Handle single request or batch
   if (Array.isArray(body)) {
     return body.map(req => processJsonRpc(req));

@@ -464,7 +464,8 @@ function mcpHandler(req, res) {
     const sessionId = req.headers['mcp-session-id'] || 'vendorclear-session';
 
     try {
-      const result = handleMcpRequest(req.body);
+      const proto = req.get('x-forwarded-proto') || req.protocol;
+      const result = handleMcpRequest(req.body, process.env.PUBLIC_URL || `${proto}://${req.get('host')}`);
 
       // Filter out null responses (notifications)
       if (result === null) {
