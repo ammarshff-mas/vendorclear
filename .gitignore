@@ -1,0 +1,4 @@
+node_modules/
+vendorclear.db
+.env
+vendorclear.db*
