@@ -61,7 +61,7 @@ api.get('/summary', (req, res) => {
         });
       }
 
-      if (state !== 'ready') {
+      if (state !== 'ready' && state !== 'paid' && state !== 'rejected') {
         queue.push({
           id: inv.id,
           invoiceNumber: inv.invoiceNumber,
@@ -73,7 +73,7 @@ api.get('/summary', (req, res) => {
           nextAction: evaluation.nextAction,
           urgent: evaluation.urgent
         });
-      } else {
+      } else if (state === 'ready') {
         ready.push({
           id: inv.id,
           invoiceNumber: inv.invoiceNumber,
@@ -139,7 +139,7 @@ api.post('/invoices', (req, res) => {
 
     db.prepare(`
       INSERT INTO invoices (id, supplierId, country, invoiceNumber, issueDate, currency, subtotal, taxAmount, total, poNumber, invoiceType, authorityStatus, internalStatus, zatcaQr, myinvoisLink, myinvoisUuid, validatedAt, source, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', ?, ?, ?, ?, 'user', ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_submitted', 'pending_review', ?, ?, ?, ?, 'user', ?, ?)
     `).run(id, supplierId, country, invoiceNumber, issueDate || null, currency,
       subtotal || 0, taxAmount || 0, total || 0, poNumber || null,
       invoiceType || 'standard', zatcaQr || null, myinvoisLink || null,
@@ -165,7 +165,7 @@ api.patch('/invoices/:id', (req, res) => {
 
     const allowed = ['authorityStatus', 'authorityStatusSource', 'internalStatus', 'subtotal',
       'taxAmount', 'total', 'zatcaQr', 'myinvoisLink', 'myinvoisUuid', 'validatedAt',
-      'poNumber', 'invoiceNumber', 'issueDate', 'dueDate', 'invoiceType'];
+      'poNumber', 'invoiceNumber', 'issueDate', 'dueDate', 'invoiceType', 'notes'];
     const updates = [];
     const values = [];
     const changes = [];
@@ -179,12 +179,16 @@ api.patch('/invoices/:id', (req, res) => {
     }
 
     if (updates.length > 0) {
-      updates.push("updatedAt = datetime('now')");
+      if (req.body.authorityStatus !== undefined && req.body.authorityStatusSource === undefined) {
+        updates.push('authorityStatusSource = ?');
+        values.push('manual');
+      }
+      updates.push("updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')");
       values.push(req.params.id);
       db.prepare(`UPDATE invoices SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
       db.prepare(`INSERT INTO activity (id, invoiceId, supplierId, actor, action, detail, createdAt)
-        VALUES (?, ?, ?, 'user', 'invoice_updated', ?, datetime('now'))`).run(
+        VALUES (?, ?, ?, 'user', 'invoice_updated', ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`).run(
         uuidv4(), req.params.id, invoice.supplierId, changes.join(', '));
     }
 
@@ -268,7 +272,7 @@ api.patch('/suppliers/:id', (req, res) => {
     }
 
     if (updates.length > 0) {
-      updates.push("updatedAt = datetime('now')");
+      updates.push("updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')");
       values.push(req.params.id);
       db.prepare(`UPDATE suppliers SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     }
@@ -322,11 +326,7 @@ api.get('/public/fix/:token', (req, res) => {
     const evaluation = invoice ? evaluateInvoice(invoice) : null;
 
     // Issues = blockers from evaluation
-    const issues = evaluation ? evaluation.blockers.map(b => ({
-      code: b.code,
-      message: b.message,
-      pass: false
-    })) : [];
+    const issues = evaluation ? evaluation.checks.filter(c => c.level === 'fail').map(c => ({ level: c.level, label: c.label, detail: c.detail })) : [];
 
     res.json({
       invoice: {
@@ -356,13 +356,13 @@ api.post('/public/fix/:token/respond', (req, res) => {
 
     const { response, correctedInvoiceNumber } = req.body;
 
-    db.prepare(`UPDATE fix_requests SET supplierResponse = ?, correctedInvoiceNumber = ?, status = 'responded', updatedAt = datetime('now') WHERE id = ?`)
+    db.prepare(`UPDATE fix_requests SET supplierResponse = ?, correctedInvoiceNumber = ?, status = 'responded', updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)
       .run(response || null, correctedInvoiceNumber || null, fixReq.id);
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(fixReq.invoiceId);
     if (invoice) {
       db.prepare(`INSERT INTO activity (id, invoiceId, supplierId, actor, action, detail, createdAt)
-        VALUES (?, ?, ?, 'supplier', 'fix_response', ?, datetime('now'))`).run(
+        VALUES (?, ?, ?, 'supplier', 'supplier_responded', ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`).run(
         uuidv4(), invoice.id, invoice.supplierId,
         `Supplier responded: ${response || ''}${correctedInvoiceNumber ? ` (corrected: ${correctedInvoiceNumber})` : ''}`);
     }
@@ -383,11 +383,11 @@ api.post('/invoices/:id/fix-requests', (req, res) => {
     const { message } = req.body;
 
     db.prepare(`INSERT INTO fix_requests (id, invoiceId, token, message, status, createdBy, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, 'open', 'user', datetime('now'), datetime('now'))`).run(
+      VALUES (?, ?, ?, ?, 'open', 'user', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))`).run(
       id, req.params.id, token, message || '');
 
     db.prepare(`INSERT INTO activity (id, invoiceId, supplierId, actor, action, detail, createdAt)
-      VALUES (?, ?, ?, 'user', 'fix_request_created', ?, datetime('now'))`).run(
+      VALUES (?, ?, ?, 'user', 'fix_request_sent', ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`).run(
       uuidv4(), req.params.id, invoice.supplierId, `Fix request: ${message || ''}`);
 
     res.json({ id, token, invoiceId: req.params.id, status: 'open', message });
@@ -401,13 +401,13 @@ api.post('/fix-requests/:id/resolve', (req, res) => {
     const fixReq = db.prepare('SELECT * FROM fix_requests WHERE id = ?').get(req.params.id);
     if (!fixReq) return res.status(404).json({ error: 'Fix request not found' });
 
-    db.prepare(`UPDATE fix_requests SET status = 'resolved', updatedAt = datetime('now') WHERE id = ?`)
+    db.prepare(`UPDATE fix_requests SET status = 'resolved', updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)
       .run(req.params.id);
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(fixReq.invoiceId);
     if (invoice) {
       db.prepare(`INSERT INTO activity (id, invoiceId, supplierId, actor, action, detail, createdAt)
-        VALUES (?, ?, ?, 'user', 'fix_request_resolved', 'Fix request resolved', datetime('now'))`).run(
+        VALUES (?, ?, ?, 'user', 'fix_request_resolved', 'Fix request resolved', strftime('%Y-%m-%dT%H:%M:%fZ','now'))`).run(
         uuidv4(), invoice.id, invoice.supplierId);
     }
 

@@ -19,8 +19,8 @@ db.exec(`
     sstNo TEXT,
     email TEXT,
     source TEXT DEFAULT 'user',
-    createdAt TEXT DEFAULT (datetime('now')),
-    updatedAt TEXT DEFAULT (datetime('now'))
+    createdAt TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updatedAt TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   );
 
   CREATE TABLE IF NOT EXISTS invoices (
@@ -36,16 +36,17 @@ db.exec(`
     total REAL DEFAULT 0,
     poNumber TEXT,
     invoiceType TEXT DEFAULT 'standard',
-    authorityStatus TEXT DEFAULT 'pending',
-    authorityStatusSource TEXT,
-    internalStatus TEXT DEFAULT 'pending',
+    authorityStatus TEXT DEFAULT 'not_submitted',
+    authorityStatusSource TEXT DEFAULT 'manual',
+    internalStatus TEXT DEFAULT 'pending_review',
     zatcaQr TEXT,
     myinvoisLink TEXT,
     myinvoisUuid TEXT,
     validatedAt TEXT,
+    notes TEXT,
     source TEXT DEFAULT 'user',
-    createdAt TEXT DEFAULT (datetime('now')),
-    updatedAt TEXT DEFAULT (datetime('now'))
+    createdAt TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updatedAt TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   );
 
   CREATE TABLE IF NOT EXISTS fix_requests (
@@ -57,8 +58,8 @@ db.exec(`
     supplierResponse TEXT,
     correctedInvoiceNumber TEXT,
     createdBy TEXT DEFAULT 'user',
-    createdAt TEXT DEFAULT (datetime('now')),
-    updatedAt TEXT DEFAULT (datetime('now'))
+    createdAt TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updatedAt TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   );
 
   CREATE TABLE IF NOT EXISTS activity (
@@ -68,8 +69,13 @@ db.exec(`
     actor TEXT NOT NULL DEFAULT 'system',
     action TEXT NOT NULL,
     detail TEXT,
-    createdAt TEXT DEFAULT (datetime('now'))
+    createdAt TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   );
 `);
+
+// Light migrations for databases created by an earlier version
+try { db.exec('ALTER TABLE invoices ADD COLUMN notes TEXT'); } catch (e) { /* already there */ }
+db.exec("UPDATE invoices SET authorityStatusSource = 'manual' WHERE authorityStatusSource IS NULL");
+db.exec("UPDATE invoices SET internalStatus = 'pending_review' WHERE internalStatus = 'pending'");
 
 module.exports = db;

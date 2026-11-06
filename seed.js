@@ -22,7 +22,7 @@ function seedData() {
       taxId: '311234567800003',
       registrationNo: '4030123456',
       email: 'accounts@jeddahfreight.sa',
-      source: 'system'
+      source: 'sample'
     },
     {
       id: uuidv4(),
@@ -31,16 +31,17 @@ function seedData() {
       taxId: '302345678900003',
       registrationNo: '2050987654',
       email: 'billing@damoffice.sa',
-      source: 'system'
+      source: 'sample'
     },
     {
       id: uuidv4(),
       name: 'Petaling Events Sdn Bhd',
       country: 'MY',
       taxId: 'C21987654030',
+      registrationNo: '201901012345',
       sstNo: 'B10-1234-56789012',
       email: 'finance@petalingevents.my',
-      source: 'system'
+      source: 'sample'
     }
   ];
 
@@ -105,9 +106,9 @@ function seedData() {
       invoiceType: 'standard',
       authorityStatus: 'cleared',
       authorityStatusSource: 'manual',
-      internalStatus: 'pending',
+      internalStatus: 'pending_review',
       zatcaQr: jfpQr,
-      source: 'system'
+      source: 'sample'
     },
     {
       id: uuidv4(),
@@ -123,9 +124,9 @@ function seedData() {
       invoiceType: 'standard',
       authorityStatus: 'cleared',
       authorityStatusSource: 'manual',
-      internalStatus: 'pending',
+      internalStatus: 'pending_review',
       zatcaQr: dosQr,
-      source: 'system'
+      source: 'sample'
     },
     {
       id: uuidv4(),
@@ -140,11 +141,11 @@ function seedData() {
       invoiceType: 'standard',
       authorityStatus: 'valid',
       authorityStatusSource: 'myinvois',
-      internalStatus: 'pending',
+      internalStatus: 'pending_review',
       myinvoisLink: 'https://myinvois.hasil.gov.my/e8f1a2b3-c4d5-6e7f-8901-abcdef123456/share/abc123def456',
       myinvoisUuid: 'e8f1a2b3-c4d5-6e7f-8901-abcdef123456',
       validatedAt: validatedAt,
-      source: 'system'
+      source: 'sample'
     }
   ];
 

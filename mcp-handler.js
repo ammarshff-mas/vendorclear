@@ -77,8 +77,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         id: { type: 'string', description: 'Invoice ID' },
-        authorityStatus: { type: 'string', enum: ['pending', 'cleared', 'valid', 'rejected', 'reported'], description: 'Status from ZATCA or LHDN' },
-        internalStatus: { type: 'string', enum: ['pending', 'approved', 'on_hold', 'rejected', 'paid'], description: 'Internal finance team approval' },
+        authorityStatus: { type: 'string', enum: ['not_submitted', 'pending', 'cleared', 'reported', 'rejected', 'submitted', 'valid', 'invalid', 'cancelled'], description: 'Status from the tax authority. KSA (ZATCA): not_submitted, pending, cleared, reported, rejected. Malaysia (LHDN): not_submitted, submitted, valid, invalid, cancelled.' },
+        internalStatus: { type: 'string', enum: ['pending_review', 'approved', 'on_hold', 'rejected', 'paid'], description: 'Internal finance team approval' },
         subtotal: { type: 'number' },
         taxAmount: { type: 'number' },
         total: { type: 'number' },
@@ -141,7 +141,7 @@ const TOOLS = [
       properties: {
         supplierId: { type: 'string', description: 'Filter by supplier' },
         country: { type: 'string', enum: ['SA', 'MY'] },
-        paymentState: { type: 'string', enum: ['ready', 'blocked', 'awaiting_authority', 'needs_approval'] }
+        paymentState: { type: 'string', enum: ['ready', 'blocked', 'awaiting_authority', 'needs_approval', 'paid', 'rejected'] }
       }
     }
   },
@@ -203,7 +203,7 @@ function updateSupplier(args) {
     }
   }
   if (updates.length > 0) {
-    updates.push("updatedAt = datetime('now')");
+    updates.push("updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')");
     values.push(id);
     db.prepare(`UPDATE suppliers SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     logActivity(null, id, 'claude', 'supplier_updated', `Updated: ${Object.keys(fields).join(', ')}`);
@@ -219,7 +219,7 @@ function createInvoice(args) {
   const now = new Date().toISOString();
   db.prepare(`
     INSERT INTO invoices (id, supplierId, country, invoiceNumber, issueDate, currency, subtotal, taxAmount, total, poNumber, invoiceType, authorityStatus, internalStatus, zatcaQr, myinvoisLink, myinvoisUuid, validatedAt, source, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', ?, ?, ?, ?, 'claude', ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_submitted', 'pending_review', ?, ?, ?, ?, 'claude', ?, ?)
   `).run(
     id, args.supplierId, args.country, args.invoiceNumber,
     args.issueDate || null, args.currency,
@@ -244,7 +244,7 @@ function updateInvoice(args) {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
   if (!invoice) throw new Error(`Invoice not found: ${id}`);
 
-  const allowed = ['authorityStatus', 'authorityStatusSource', 'internalStatus', 'subtotal', 'taxAmount', 'total', 'zatcaQr', 'myinvoisLink', 'myinvoisUuid', 'validatedAt', 'poNumber', 'invoiceNumber', 'issueDate', 'dueDate'];
+  const allowed = ['authorityStatus', 'authorityStatusSource', 'internalStatus', 'subtotal', 'taxAmount', 'total', 'zatcaQr', 'myinvoisLink', 'myinvoisUuid', 'validatedAt', 'poNumber', 'invoiceNumber', 'issueDate', 'dueDate', 'notes'];
   const updates = [];
   const values = [];
   const changes = [];
@@ -258,7 +258,11 @@ function updateInvoice(args) {
   }
 
   if (updates.length > 0) {
-    updates.push("updatedAt = datetime('now')");
+    if (fields.authorityStatus !== undefined && fields.authorityStatusSource === undefined) {
+      updates.push('authorityStatusSource = ?');
+      values.push('claude');
+    }
+    updates.push("updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')");
     values.push(id);
     db.prepare(`UPDATE invoices SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     logActivity(id, invoice.supplierId, 'claude', 'invoice_updated', changes.join(', '));
@@ -315,7 +319,7 @@ function getComplianceSummary() {
       });
     }
 
-    if (state !== 'ready') {
+    if (state !== 'ready' && state !== 'paid' && state !== 'rejected') {
       queue.push({
         id: inv.id,
         invoiceNumber: inv.invoiceNumber,
@@ -327,7 +331,7 @@ function getComplianceSummary() {
         nextAction: evaluation.nextAction,
         urgent: evaluation.urgent
       });
-    } else {
+    } else if (state === 'ready') {
       ready.push({
         id: inv.id,
         invoiceNumber: inv.invoiceNumber,
@@ -369,7 +373,7 @@ function createFixRequest(args) {
     VALUES (?, ?, ?, ?, 'open', 'claude', ?, ?)
   `).run(id, args.invoiceId, token, args.message, now, now);
 
-  logActivity(args.invoiceId, invoice.supplierId, 'claude', 'fix_request_created', `Fix request sent: ${args.message}`);
+  logActivity(args.invoiceId, invoice.supplierId, 'claude', 'fix_request_sent', `Fix request sent: ${args.message}`);
 
   const supplier = db.prepare('SELECT name FROM suppliers WHERE id = ?').get(invoice.supplierId);
 
@@ -437,7 +441,7 @@ function resetDemo() {
 function logActivity(invoiceId, supplierId, actor, action, detail) {
   db.prepare(`
     INSERT INTO activity (id, invoiceId, supplierId, actor, action, detail, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   `).run(uuidv4(), invoiceId, supplierId, actor, action, detail);
 }
 
